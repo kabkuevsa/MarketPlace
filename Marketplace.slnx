@@ -3,5 +3,6 @@
     <Project Path="src/Marketplace.Catalog/Marketplace.Catalog.csproj" />
     <Project Path="src/Marketplace.Identity/Marketplace.Identity.csproj" />
     <Project Path="src/Marketplace.Orders/Marketplace.Orders.csproj" />
+    <Project Path="src/Marketplace.Warehouse/Marketplace.Warehouse.csproj" />
   </Folder>
 </Solution>
