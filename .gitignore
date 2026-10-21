@@ -1,0 +1,21 @@
+## Папки сборки
+[Bb]in/
+[Oo]bj/
+
+## Visual Studio
+.vs/
+*.user
+*.suo
+*.cache
+
+## Логи
+[Ll]og/
+*.log
+
+## Секреты и локальные настройки
+appsettings.Local.json
+*.pfx
+*.key
+
+## Docker
+docker/**/data/
