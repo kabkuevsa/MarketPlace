@@ -2,8 +2,10 @@
   <Folder Name="/src/">
     <Project Path="src/Marketplace.Catalog/Marketplace.Catalog.csproj" />
     <Project Path="src/Marketplace.Identity/Marketplace.Identity.csproj" />
+    <Project Path="src/Marketplace.Infrastructure/Marketplace.Infrastructure.csproj" />
     <Project Path="src/Marketplace.Orders/Marketplace.Orders.csproj" />
     <Project Path="src/Marketplace.Payments/Marketplace.Payments.csproj" />
+    <Project Path="src/Marketplace.Shared/Marketplace.Shared.csproj" />
     <Project Path="src/Marketplace.Warehouse/Marketplace.Warehouse.csproj" />
     <Project Path="src/Marketplace.Web/Marketplace.Web.csproj" />
   </Folder>
