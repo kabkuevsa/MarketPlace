@@ -100,3 +100,88 @@ flowchart LR
 
 &#x20;   RabbitMQ -.-> Orders
 
+
+## Модель данных
+
+
+
+У каждого сервиса своя база. Ниже — таблицы, которыми он владеет.
+
+Типы упрощены для чтения; в коде это EF Core-сущности.
+
+
+
+\### Identity (identity\_db)
+
+
+
+| Таблица | Поля | Зачем |
+
+|---------|------|-------|
+
+| Users | Id, Email, PasswordHash, Role, CreatedAt | логины и роли |
+
+
+
+\### Catalog (catalog\_db)
+
+
+
+| Таблица | Поля | Зачем |
+
+|---------|------|-------|
+
+| Categories | Id, Name | разделы каталога |
+
+| Products | Id, CategoryId, Name, Description, Price | карточка товара; цена здесь, а остатки — нет |
+
+| CartItems | Id, UserId, ProductId, Quantity | корзина покупателя |
+
+
+
+\### Warehouse (warehouse\_db)
+
+
+
+| Таблица | Поля | Зачем |
+
+|---------|------|-------|
+
+| StockItems | Id, ProductId, Available, Reserved | сколько товара свободно и сколько зарезервировано |
+
+| Reservations | Id, OrderId, Status, CreatedAt | резерв под заказ |
+
+| ReservationItems | Id, ReservationId, ProductId, Quantity | что и в каком количестве зарезервировано |
+
+
+
+\### Payments (payments\_db)
+
+
+
+| Таблица | Поля | Зачем |
+
+|---------|------|-------|
+
+| Payments | Id, OrderId, Amount, Status, CreatedAt | платёж и его статус |
+
+
+
+\### Orders (orders\_db)
+
+
+
+| Таблица | Поля | Зачем |
+
+|---------|------|-------|
+
+| Orders | Id, UserId, Status, Total, CreatedAt | шапка заказа и статус Saga |
+
+| OrderItems | Id, OrderId, ProductId, NameSnapshot, PriceSnapshot, Quantity | позиции; название и цену замораживаем на момент заказа |
+
+
+
+Важно: Orders не заглядывает в таблицы Catalog и Warehouse.
+
+Нужна цена — спрашивает Catalog по HTTP, нужен остаток — Warehouse.
+
