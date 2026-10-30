@@ -1,3 +1,7 @@
+using Marketplace.Identity.Models;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Marketplace.Identity.Data;
 using Serilog;
 
 Log.Logger = new LoggerConfiguration()
@@ -15,6 +19,11 @@ try
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen();
     builder.Services.AddHealthChecks();
+    builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+
+    builder.Services.AddIdentity<User, IdentityRole<Guid>>()
+        .AddEntityFrameworkStores<AppDbContext>();
 
     var app = builder.Build();
 
