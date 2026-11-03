@@ -1,17 +1,40 @@
-var builder = WebApplication.CreateBuilder(args);
+using Serilog;
 
-// Swagger
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .CreateLogger();
 
-var app = builder.Build();
-
-if (app.Environment.IsDevelopment())
+try
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    Log.Information("Starting Orders service");   // <-- имя сервиса
+
+    var builder = WebApplication.CreateBuilder(args);
+
+    builder.Host.UseSerilog();
+
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen();
+    builder.Services.AddHealthChecks();
+
+    var app = builder.Build();
+
+    if (app.Environment.IsDevelopment())
+    {
+        app.UseSwagger();
+        app.UseSwaggerUI();
+    }
+
+    app.UseSerilogRequestLogging();
+    app.UseHttpsRedirection();
+    app.MapHealthChecks("/health");
+
+    app.Run();
 }
-
-app.UseHttpsRedirection();
-
-app.Run();
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Orders service terminated unexpectedly");   // <-- имя сервиса
+}
+finally
+{
+    Log.CloseAndFlush();
+}
