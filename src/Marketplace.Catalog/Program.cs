@@ -92,6 +92,66 @@ try
         return Results.NoContent();
     });
 
+    var cartApi = app.MapGroup("/api/cart").WithTags("Cart");
+
+    cartApi.MapGet("/", async (Guid userId, CatalogDbContext db) =>
+    {
+        var items = await db.CartItems
+            .Include(c => c.Product)
+            .Where(c => c.UserId == userId)
+            .Select(c => new CartItemResponse(
+                c.Id,
+                c.UserId,
+                c.ProductId,
+                c.Product.Name,
+                c.Product.Price,
+                c.Quantity,
+                c.Product.Price * c.Quantity))
+            .ToListAsync();
+        return Results.Ok(items);
+    });
+
+    cartApi.MapPost("/items", async (CreateCartItemRequest request, CatalogDbContext db) =>
+    {
+        var product = await db.Products.FindAsync(request.ProductId);
+        if (product is null) return Results.NotFound("Product not found");
+
+        if (request.Quantity <= 0)
+            return Results.BadRequest("Quantity must be greater than 0");
+
+        var existing = await db.CartItems
+            .FirstOrDefaultAsync(c => c.UserId == request.UserId && c.ProductId == request.ProductId);
+
+        if (existing is not null)
+        {
+            existing.Quantity += request.Quantity;
+        }
+        else
+        {
+            db.CartItems.Add(new CartItem
+            {
+                UserId = request.UserId,
+                ProductId = request.ProductId,
+                Quantity = request.Quantity
+            });
+        }
+
+        await db.SaveChangesAsync();
+        return Results.Ok();
+    });
+
+    cartApi.MapDelete("/items/{productId:guid}", async (Guid productId, Guid userId, CatalogDbContext db) =>
+    {
+        var item = await db.CartItems
+            .FirstOrDefaultAsync(c => c.UserId == userId && c.ProductId == productId);
+
+        if (item is null) return Results.NotFound();
+
+        db.CartItems.Remove(item);
+        await db.SaveChangesAsync();
+        return Results.NoContent();
+    });
+
     app.Run();
 }
 catch (Exception ex)
