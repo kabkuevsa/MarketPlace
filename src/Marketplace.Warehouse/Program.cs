@@ -1,3 +1,5 @@
+using Marketplace.Warehouse.Data;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 Log.Logger = new LoggerConfiguration()
@@ -15,6 +17,8 @@ try
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen();
     builder.Services.AddHealthChecks();
+    builder.Services.AddDbContext<WarehouseDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
 
     var app = builder.Build();
 
@@ -27,6 +31,12 @@ try
     app.UseSerilogRequestLogging();
     app.UseHttpsRedirection();
     app.MapHealthChecks("/health");
+
+    using (var scope = app.Services.CreateScope())
+    {
+        var db = scope.ServiceProvider.GetRequiredService<WarehouseDbContext>();
+        db.Database.Migrate();
+    }
 
     app.Run();
 }
