@@ -33,13 +33,14 @@ try
     }
 
     app.UseSerilogRequestLogging();
-    app.UseHttpsRedirection();
+    //app.UseHttpsRedirection();
     app.MapHealthChecks("/health");
 
     using (var scope = app.Services.CreateScope())
     {
         var db = scope.ServiceProvider.GetRequiredService<CatalogDbContext>();
         db.Database.Migrate();
+        DbSeeder.Seed(db);
     }
 
 
