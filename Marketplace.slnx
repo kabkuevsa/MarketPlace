@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Marketplace.Catalog/Marketplace.Catalog.csproj" />
+    <Project Path="src/Marketplace.Gateway/Marketplace.Gateway.csproj" />
     <Project Path="src/Marketplace.Identity/Marketplace.Identity.csproj" />
     <Project Path="src/Marketplace.Infrastructure/Marketplace.Infrastructure.csproj" />
     <Project Path="src/Marketplace.Orders/Marketplace.Orders.csproj" />
