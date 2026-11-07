@@ -2,6 +2,8 @@
 using Marketplace.Orders.Data;
 using Marketplace.Orders.DTOs;
 using Marketplace.Orders.Models;
+using Marketplace.Shared.Events;
+using MassTransit;
 
 namespace Marketplace.Orders.Services;
 
@@ -9,18 +11,19 @@ public class OrderSaga
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly OrdersDbContext _db;
+    private readonly IPublishEndpoint _publishEndpoint;
 
-    public OrderSaga(IHttpClientFactory httpClientFactory, OrdersDbContext db)
+    public OrderSaga(IHttpClientFactory httpClientFactory, OrdersDbContext db, IPublishEndpoint publishEndpoint)
     {
         _httpClientFactory = httpClientFactory;
         _db = db;
+        _publishEndpoint = publishEndpoint;
     }
 
     public async Task<(bool Success, string? Error)> ExecuteAsync(Order order, CreateOrderRequest request)
     {
         try
         {
-            // Шаг 1: Получаем информацию о товарах из Catalog
             var catalogClient = _httpClientFactory.CreateClient("Catalog");
             var productPrices = new Dictionary<Guid, (string Name, decimal Price)>();
 
@@ -34,7 +37,6 @@ public class OrderSaga
                 productPrices[item.ProductId] = (product.Name, product.Price);
             }
 
-            // Шаг 2: Создаём OrderItems со снимками данных
             decimal total = 0;
             foreach (var item in request.Items)
             {
@@ -53,7 +55,6 @@ public class OrderSaga
             _db.Orders.Add(order);
             await _db.SaveChangesAsync();
 
-            // Шаг 3: Резервируем товары на складе
             order.Status = OrderStatus.ReservingStock;
             await _db.SaveChangesAsync();
 
@@ -78,7 +79,6 @@ public class OrderSaga
             order.Status = OrderStatus.StockReserved;
             await _db.SaveChangesAsync();
 
-            // Шаг 4: Проводим оплату
             order.Status = OrderStatus.ProcessingPayment;
             await _db.SaveChangesAsync();
 
@@ -88,10 +88,13 @@ public class OrderSaga
 
             if (!paymentResponse.IsSuccessStatusCode)
             {
-                // Компенсация: отменяем резерв
                 await CompensateReservationAsync(warehouseClient, order.ReservationId.Value);
                 order.Status = OrderStatus.Cancelled;
                 await _db.SaveChangesAsync();
+
+                await _publishEndpoint.Publish(new OrderCancelledEvent(
+                    order.Id, order.ReservationId, null, "Payment failed"));
+
                 var errorContent = await paymentResponse.Content.ReadAsStringAsync();
                 return (false, $"Payment failed: {errorContent}");
             }
@@ -100,6 +103,9 @@ public class OrderSaga
             order.PaymentId = payment!.Id;
             order.Status = OrderStatus.Completed;
             await _db.SaveChangesAsync();
+
+            // === ВОТ ЗДЕСЬ происходит публикация события ===
+            await _publishEndpoint.Publish(new OrderCompletedEvent(order.Id, order.ReservationId.Value));
 
             return (true, null);
         }
@@ -117,10 +123,7 @@ public class OrderSaga
         {
             await warehouseClient.PostAsync($"/api/reservations/{reservationId}/release", null);
         }
-        catch
-        {
-            // Логируем, но не прерываем
-        }
+        catch { }
     }
 }
 

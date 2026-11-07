@@ -4,6 +4,9 @@ using Serilog;
 using Marketplace.Shared;
 using Marketplace.Warehouse.DTOs;
 using Marketplace.Warehouse.Models;
+using Marketplace.Shared.Events;
+using Marketplace.Warehouse.Consumers;
+using MassTransit;
 
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
@@ -20,8 +23,26 @@ try
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen();
     builder.Services.AddHealthChecks();
+
+    builder.Services.AddMassTransit(x =>
+    {
+        x.AddConsumer<OrderCompletedConsumer>();
+        x.UsingRabbitMq((context, cfg) =>
+        {
+            cfg.Host("localhost", "/", h =>
+            {
+                h.Username("guest");
+                h.Password("guest");
+            });
+            cfg.ConfigureEndpoints(context);
+        });
+    });
+
     builder.Services.AddDbContext<WarehouseDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+
+
+    
 
     var app = builder.Build();
 

@@ -2,8 +2,11 @@ using Marketplace.Orders.Data;
 using Marketplace.Orders.DTOs;
 using Marketplace.Orders.Models;
 using Marketplace.Orders.Services;
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using Marketplace.Shared.Events;
+
 
 Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
@@ -23,6 +26,19 @@ try
 
     builder.Services.AddDbContext<OrdersDbContext>(options =>
         options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+
+    builder.Services.AddMassTransit(x =>
+    {
+        x.UsingRabbitMq((context, cfg) =>
+        {
+            cfg.Host("localhost", "/", h =>
+            {
+                h.Username("guest");
+                h.Password("guest");
+            });
+            cfg.ConfigureEndpoints(context);
+        });
+    });
 
     builder.Services.AddScoped<OrderSaga>();
 
