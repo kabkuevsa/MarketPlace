@@ -40,6 +40,9 @@ namespace Marketplace.Warehouse.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("OrderId")
+                        .IsUnique();
+
                     b.ToTable("Reservations");
                 });
 
@@ -81,9 +84,6 @@ namespace Marketplace.Warehouse.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ProductId")
-                        .IsUnique();
 
                     b.ToTable("StockItems");
                 });

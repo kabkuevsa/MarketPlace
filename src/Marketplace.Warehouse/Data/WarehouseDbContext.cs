@@ -15,15 +15,14 @@ public class WarehouseDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<StockItem>(e =>
-            e.HasIndex(s => s.ProductId).IsUnique());
-
         modelBuilder.Entity<Reservation>(e =>
         {
             e.HasMany(r => r.Items)
                 .WithOne(i => i.Reservation)
                 .HasForeignKey(i => i.ReservationId);
+
             e.Property(r => r.Status).HasConversion<string>();
+            e.HasIndex(r => r.OrderId).IsUnique();
         });
     }
 }
