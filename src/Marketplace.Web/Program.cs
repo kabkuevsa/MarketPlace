@@ -1,3 +1,4 @@
+
 using Marketplace.Web.Components;
 using Marketplace.Web.Services;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -7,22 +8,30 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-// HttpClient для запросов к Gateway
+// HTTP-клиент для Gateway
 builder.Services.AddScoped(sp => new HttpClient
 {
-    BaseAddress = new Uri(builder.Configuration["GatewayUrl"] ?? "http://localhost:5000")
+    BaseAddress = new Uri(
+        builder.Configuration["GatewayUrl"] ?? "http://localhost:5002")
 });
 
 builder.Services.AddScoped<CatalogApi>();
 builder.Services.AddScoped<IdentityApi>();
 builder.Services.AddScoped<OrdersApi>();
 
-// Сервис для хранения JWT-токена
+// Хранение JWT
 builder.Services.AddScoped<TokenStorageService>();
 
-// Authentication
-builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthStateProvider>();
+// Авторизация
+builder.Services.AddScoped<CustomAuthStateProvider>();
+
+builder.Services.AddScoped<AuthenticationStateProvider>(
+    sp => sp.GetRequiredService<CustomAuthStateProvider>());
+
 builder.Services.AddAuthorizationCore();
+
+// Передача AuthenticationState всем компонентам Blazor
+builder.Services.AddCascadingAuthenticationState();
 
 var app = builder.Build();
 
@@ -30,10 +39,13 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
     app.UseHsts();
+    app.UseHttpsRedirection();
 }
 
-app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
+app.UseStatusCodePagesWithReExecute(
+    "/not-found",
+    createScopeForStatusCodePages: true);
+
 app.UseAntiforgery();
 app.UseStaticFiles();
 

@@ -1,93 +1,224 @@
-﻿@page "/"
+﻿
+@page "/"
 @rendermode InteractiveServer
+
+@using System.Security.Claims
+@using System.Text.Json
 @using Marketplace.Web.Models
 @using Marketplace.Web.Services
+
 @inject CatalogApi CatalogApi
-@inject CustomAuthStateProvider AuthProvider
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>Каталог товаров</PageTitle>
 
-<h1>Каталог товаров</h1>
+<div class="container mt-4">
 
-@if (_loading)
-{
-    <p>Загрузка...</p>
-}
-else if (_products.Count == 0)
-{
-    <p>Товары не найдены.</p>
-}
-else
-{
-    <div class="row">
-        @foreach (var product in _products)
-        {
-            <div class="col-md-4 mb-4">
-                <div class="card h-100">
-                    <div class="card-body">
-                        <h5 class="card-title">@product.Name</h5>
-                        <p class="card-text text-muted">@product.CategoryName</p>
-                        <p class="card-text">@product.Description</p>
-                        <h4 class="text-primary">@product.Price.ToString("C")</h4>
+    <h1 class="mb-4">Каталог товаров</h1>
+
+    @if (_loading)
+    {
+        <div class="text-center mt-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2">Загрузка товаров...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(_loadError))
+    {
+        <div class="alert alert-danger">
+            @_loadError
+            <button class="btn btn-sm btn-outline-danger ms-3"
+                    @onclick="LoadProductsAsync">
+                Повторить
+            </button>
+        </div>
+    }
+    else if (_products.Count == 0)
+    {
+        <div class="alert alert-info">
+            Товары пока отсутствуют.
+        </div>
+    }
+    else
+    {
+        <div class="row">
+
+            @foreach (var product in _products)
+            {
+                <div class="col-md-4 mb-4" @key="product.Id">
+
+                    <div class="card h-100 shadow-sm">
+
+                        <div class="card-body">
+
+                            <h5 class="card-title">
+                                @product.Name
+                            </h5>
+
+                            <p class="text-muted mb-2">
+                                @product.CategoryName
+                            </p>
+
+                            <p class="card-text">
+                                @product.Description
+                            </p>
+
+                            <h4 class="text-primary">
+                                @product.Price.ToString("C")
+                            </h4>
+
+                        </div>
+
+                        <div class="card-footer bg-white">
+
+                            <AuthorizeView>
+
+                                <Authorized>
+
+                                    <button class="btn btn-success w-100"
+                                            disabled="@(_addingProductId == product.Id)"
+                                            @onclick="() => AddToCartAsync(product.Id)">
+
+                                        @if (_addingProductId == product.Id)
+                                        {
+                                            <span>Добавление...</span>
+                                        }
+                                        else
+                                        {
+                                            <span>В корзину</span>
+                                        }
+
+                                    </button>
+
+                                </Authorized>
+
+                                <NotAuthorized>
+
+                                    <button class="btn btn-outline-primary w-100"
+                                            @onclick="GoToLogin">
+                                        Войти для покупки
+                                    </button>
+
+                                </NotAuthorized>
+
+                            </AuthorizeView>
+
+                        </div>
+
                     </div>
-                    <div class="card-footer">
-                        <AuthorizeView>
-                            <Authorized>
-                                <button class="btn btn-success" @onclick="() => AddToCart(product.Id)">
-                                    В корзину
-                                </button>
-                            </Authorized>
-                            <NotAuthorized>
-                                <button class="btn btn-outline-primary" @onclick="GoToLogin">
-                                    Войти для покупки
-                                </button>
-                            </NotAuthorized>
-                        </AuthorizeView>
-                    </div>
+
                 </div>
-            </div>
-        }
-    </div>
-}
+            }
 
-@if (!string.IsNullOrEmpty(_message))
-{
-    <div class="alert alert-success mt-3">@_message</div>
-}
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="alert alert-success mt-3">
+            @_message
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger mt-3">
+            @_error
+        </div>
+    }
+
+</div>
 
 @code {
+
     private List<Product> _products = new();
+
     private bool _loading = true;
+
     private string? _message;
+    private string? _error;
+    private string? _loadError;
+
+    private Guid? _addingProductId;
 
     protected override async Task OnInitializedAsync()
     {
-        _products = await CatalogApi.GetProductsAsync();
-        _loading = false;
+        await LoadProductsAsync();
     }
 
-    private async Task AddToCart(Guid productId)
+    // Загрузка каталога
+    private async Task LoadProductsAsync()
     {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var userIdClaim = authState.User.FindFirst("sub")?.Value
-                          ?? authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        _loading = true;
+        _loadError = null;
 
-        if (userIdClaim is null || !Guid.TryParse(userIdClaim, out var userId))
+        try
         {
-            _message = "Не удалось определить пользователя";
+            _products = await CatalogApi.GetProductsAsync();
+        }
+        catch (HttpRequestException)
+        {
+            _loadError =
+                "Не удалось загрузить каталог. Проверьте работу Gateway и Catalog.";
+        }
+        catch (JsonException)
+        {
+            _loadError =
+                "Сервер вернул некорректный ответ при загрузке товаров.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // Добавление товара в корзину
+    private async Task AddToCartAsync(Guid productId)
+    {
+        _message = null;
+        _error = null;
+
+        var authState =
+            await AuthStateProvider.GetAuthenticationStateAsync();
+
+        var user = authState.User;
+
+        var userIdValue =
+            user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? user.FindFirst("nameid")?.Value
+            ?? user.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(userIdValue, out var userId))
+        {
+            _error = "Не удалось определить пользователя. Попробуйте войти заново.";
             return;
         }
 
-        await CatalogApi.AddToCartAsync(userId, productId, 1);
-        _message = "Товар добавлен в корзину";
-        StateHasChanged();
+        _addingProductId = productId;
 
-        await Task.Delay(2000);
-        _message = null;
-        StateHasChanged();
+        try
+        {
+            await CatalogApi.AddToCartAsync(
+                userId,
+                productId,
+                1);
+
+            _message = "Товар успешно добавлен в корзину.";
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Не удалось добавить товар в корзину. Попробуйте позже.";
+        }
+        finally
+        {
+            _addingProductId = null;
+        }
     }
 
-    private void GoToLogin() => Navigation.NavigateTo("/login");
+    // Переход на страницу авторизации
+    private void GoToLogin()
+    {
+        Navigation.NavigateTo("/login");
+    }
 }

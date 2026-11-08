@@ -26,7 +26,27 @@ public class CustomAuthStateProvider : AuthenticationStateProvider
 
         var handler = new JwtSecurityTokenHandler();
         var jwtToken = handler.ReadJwtToken(token);
-        var identity = new ClaimsIdentity(jwtToken.Claims, "jwt");
+        var normalizedClaims = jwtToken.Claims.Select(claim =>
+        {
+            var claimType = claim.Type switch
+            {
+                "nameid" or "sub" => ClaimTypes.NameIdentifier,
+                "email" => ClaimTypes.Email,
+                _ => claim.Type
+            };
+
+            return new Claim(
+                claimType,
+                claim.Value,
+                claim.ValueType,
+                claim.Issuer);
+        });
+
+        var identity = new ClaimsIdentity(
+            normalizedClaims,
+            "jwt",
+            ClaimTypes.Email,
+            ClaimTypes.Role);
         var user = new ClaimsPrincipal(identity);
 
         // Добавляем токен в заголовок HttpClient для последующих запросов
