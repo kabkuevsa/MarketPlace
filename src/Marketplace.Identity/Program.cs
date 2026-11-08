@@ -77,7 +77,7 @@ try
     app.UseSerilogRequestLogging();
     app.UseAuthentication();
     app.UseAuthorization();
-    app.UseHttpsRedirection();
+    // app.UseHttpsRedirection();
     app.MapHealthChecks("/health");
 
     // Регистрация

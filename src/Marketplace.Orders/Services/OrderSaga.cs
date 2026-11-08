@@ -1,4 +1,5 @@
-﻿using System.Net.Http.Json;
+﻿using System.Net;
+using System.Net.Http.Json;
 using Marketplace.Orders.Data;
 using Marketplace.Orders.DTOs;
 using Marketplace.Orders.Models;
@@ -12,31 +13,50 @@ public class OrderSaga
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly OrdersDbContext _db;
     private readonly IPublishEndpoint _publishEndpoint;
+    private readonly ILogger<OrderSaga> _logger;
 
-    public OrderSaga(IHttpClientFactory httpClientFactory, OrdersDbContext db, IPublishEndpoint publishEndpoint)
+    public OrderSaga(
+        IHttpClientFactory httpClientFactory,
+        OrdersDbContext db,
+        IPublishEndpoint publishEndpoint,
+        ILogger<OrderSaga> logger)
     {
         _httpClientFactory = httpClientFactory;
         _db = db;
         _publishEndpoint = publishEndpoint;
+        _logger = logger;
     }
 
     public async Task<(bool Success, string? Error)> ExecuteAsync(Order order, CreateOrderRequest request)
     {
+        var warehouseClient = _httpClientFactory.CreateClient("Warehouse");
+        Guid? reservationId = null;
+        var orderSaved = false;
+
         try
         {
+            // 1. Цены из каталога (404 обрабатывается явно)
             var catalogClient = _httpClientFactory.CreateClient("Catalog");
             var productPrices = new Dictionary<Guid, (string Name, decimal Price)>();
 
-            foreach (var item in request.Items)
+            foreach (var productId in request.Items.Select(i => i.ProductId).Distinct())
             {
-                var product = await catalogClient.GetFromJsonAsync<ProductDto>($"/api/products/{item.ProductId}");
+                var response = await catalogClient.GetAsync($"/api/products/{productId}");
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    return (false, $"Product {productId} not found");
+                }
+                response.EnsureSuccessStatusCode();
+
+                var product = await response.Content.ReadFromJsonAsync<ProductDto>();
                 if (product is null)
                 {
-                    return (false, $"Product {item.ProductId} not found");
+                    return (false, $"Product {productId} not found");
                 }
-                productPrices[item.ProductId] = (product.Name, product.Price);
+                productPrices[productId] = (product.Name, product.Price);
             }
 
+            // 2. Сохраняем заказ
             decimal total = 0;
             foreach (var item in request.Items)
             {
@@ -54,11 +74,12 @@ public class OrderSaga
             order.Status = OrderStatus.Created;
             _db.Orders.Add(order);
             await _db.SaveChangesAsync();
+            orderSaved = true;
 
+            // 3. Резерв на складе
             order.Status = OrderStatus.ReservingStock;
             await _db.SaveChangesAsync();
 
-            var warehouseClient = _httpClientFactory.CreateClient("Warehouse");
             var reservationRequest = new
             {
                 orderId = order.Id,
@@ -75,10 +96,12 @@ public class OrderSaga
             }
 
             var reservation = await reservationResponse.Content.ReadFromJsonAsync<ReservationDto>();
-            order.ReservationId = reservation!.Id;
+            reservationId = reservation!.Id;
+            order.ReservationId = reservationId;
             order.Status = OrderStatus.StockReserved;
             await _db.SaveChangesAsync();
 
+            // 4. Оплата
             order.Status = OrderStatus.ProcessingPayment;
             await _db.SaveChangesAsync();
 
@@ -88,11 +111,11 @@ public class OrderSaga
 
             if (!paymentResponse.IsSuccessStatusCode)
             {
-                await CompensateReservationAsync(warehouseClient, order.ReservationId.Value);
+                await CompensateReservationAsync(warehouseClient, reservationId.Value);
                 order.Status = OrderStatus.Cancelled;
                 await _db.SaveChangesAsync();
 
-                await _publishEndpoint.Publish(new OrderCancelledEvent(
+                await TryPublishAsync(new OrderCancelledEvent(
                     order.Id, order.ReservationId, null, "Payment failed"));
 
                 var errorContent = await paymentResponse.Content.ReadAsStringAsync();
@@ -104,15 +127,34 @@ public class OrderSaga
             order.Status = OrderStatus.Completed;
             await _db.SaveChangesAsync();
 
-            // === ВОТ ЗДЕСЬ происходит публикация события ===
-            await _publishEndpoint.Publish(new OrderCompletedEvent(order.Id, order.ReservationId.Value));
+            // Заказ уже оплачен: сбой публикации не должен превращать его в Failed.
+            await TryPublishAsync(new OrderCompletedEvent(order.Id, reservationId.Value));
 
             return (true, null);
         }
         catch (Exception ex)
         {
-            order.Status = OrderStatus.Failed;
-            await _db.SaveChangesAsync();
+            _logger.LogError(ex, "Order {OrderId} failed", order.Id);
+
+            // Резерв снимаем только если деньги ещё не списаны.
+            if (reservationId is not null && order.PaymentId is null)
+            {
+                await CompensateReservationAsync(warehouseClient, reservationId.Value);
+            }
+
+            if (orderSaved)
+            {
+                try
+                {
+                    order.Status = OrderStatus.Failed;
+                    await _db.SaveChangesAsync();
+                }
+                catch (Exception saveEx)
+                {
+                    _logger.LogError(saveEx, "Could not mark order {OrderId} as Failed", order.Id);
+                }
+            }
+
             return (false, $"Unexpected error: {ex.Message}");
         }
     }
@@ -123,7 +165,22 @@ public class OrderSaga
         {
             await warehouseClient.PostAsync($"/api/reservations/{reservationId}/release", null);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to release reservation {ReservationId}", reservationId);
+        }
+    }
+
+    private async Task TryPublishAsync<T>(T message) where T : class
+    {
+        try
+        {
+            await _publishEndpoint.Publish(message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to publish {Event}", typeof(T).Name);
+        }
     }
 }
 

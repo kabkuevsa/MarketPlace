@@ -85,6 +85,9 @@ namespace Marketplace.Warehouse.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ProductId")
+                        .IsUnique();
+
                     b.ToTable("StockItems");
                 });
 

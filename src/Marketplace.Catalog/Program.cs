@@ -69,6 +69,12 @@ try
 
     productsApi.MapPost("/", async (CreateProductRequest request, CatalogDbContext db) =>
     {
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Price <= 0)
+            return Results.BadRequest("Name and positive Price are required");
+
+        if (!await db.Categories.AnyAsync(c => c.Id == request.CategoryId))
+            return Results.BadRequest("Category not found");
+
         var product = new Product
         {
             CategoryId = request.CategoryId,
@@ -83,6 +89,9 @@ try
 
     productsApi.MapPut("/{id:guid}", async (Guid id, UpdateProductRequest request, CatalogDbContext db) =>
     {
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Price <= 0)
+            return Results.BadRequest("Name and positive Price are required");
+
         var product = await db.Products.FindAsync(id);
         if (product is null) return Results.NotFound();
 

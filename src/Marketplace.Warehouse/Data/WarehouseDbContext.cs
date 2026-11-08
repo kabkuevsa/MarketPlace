@@ -24,5 +24,10 @@ public class WarehouseDbContext : DbContext
             e.Property(r => r.Status).HasConversion<string>();
             e.HasIndex(r => r.OrderId).IsUnique();
         });
+
+        modelBuilder.Entity<StockItem>(e =>
+        {
+            e.HasIndex(s => s.ProductId).IsUnique();
+        });
     }
 }
