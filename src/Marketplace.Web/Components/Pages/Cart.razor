@@ -7,6 +7,7 @@
 @using Marketplace.Web.Services
 
 @inject CatalogApi CatalogApi
+@inject OrdersApi OrdersApi
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 
@@ -130,6 +131,25 @@
                             </strong>
                         </div>
 
+                        <button class="btn btn-success w-100 mb-2"
+                                disabled="@(_busy || _createdOrderId.HasValue)"
+                                @onclick="CheckoutAsync">
+
+                            @if (_busy)
+                            {
+                                <span>Оформление заказа...</span>
+                            }
+                            else if (_createdOrderId.HasValue)
+                            {
+                                <span>Заказ создан</span>
+                            }
+                            else
+                            {
+                                <span>Оформить заказ</span>
+                            }
+
+                        </button>
+
                         <a href="/" class="btn btn-outline-primary w-100">
                             Продолжить покупки
                         </a>
@@ -147,6 +167,12 @@
     {
         <div class="alert alert-success mt-3">
             @_message
+
+            <div class="mt-2">
+                <a href="/orders" class="btn btn-primary">
+                    Перейти к моим заказам
+                </a>
+            </div>
         </div>
     }
 
@@ -157,6 +183,7 @@
     private List<CartItem> _items = new();
 
     private Guid? _userId;
+    private Guid? _createdOrderId;
 
     private bool _loading = true;
     private bool _busy;
@@ -190,7 +217,6 @@
         await LoadCartAsync();
     }
 
-    // Загрузка корзины
     private async Task LoadCartAsync()
     {
         if (_userId is null)
@@ -213,7 +239,6 @@
         }
     }
 
-    // Изменение количества товара
     private async Task ChangeQuantityAsync(
         Guid productId,
         int quantity)
@@ -246,7 +271,6 @@
         }
     }
 
-    // Удаление товара
     private async Task RemoveItemAsync(Guid productId)
     {
         if (_userId is null || _busy)
@@ -269,6 +293,82 @@
         catch (HttpRequestException)
         {
             _error = "Не удалось удалить товар.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task CheckoutAsync()
+    {
+        if (_userId is null || _items.Count == 0 || _busy)
+            return;
+
+        _busy = true;
+        _error = null;
+        _message = null;
+
+        try
+        {
+            var orderItems = _items
+                .Select(item => new OrderItemRequest(
+                    item.ProductId,
+                    item.Quantity))
+                .ToList();
+
+            // Отправляем заказ в Orders API.
+            var order = await OrdersApi.CreateOrderAsync(orderItems);
+
+            // Запоминаем созданный заказ, чтобы не отправить его повторно.
+            _createdOrderId = order.Id;
+
+            // Очищаем корзину после успешного создания заказа.
+            var cartCleanupFailed = false;
+
+            foreach (var item in _items.ToList())
+            {
+                try
+                {
+                    await CatalogApi.RemoveFromCartAsync(
+                        _userId.Value,
+                        item.ProductId);
+                }
+                catch (HttpRequestException)
+                {
+                    cartCleanupFailed = true;
+                }
+            }
+
+            if (cartCleanupFailed)
+            {
+                try
+                {
+                    _items = await CatalogApi.GetCartAsync(_userId.Value);
+                }
+                catch (HttpRequestException)
+                {
+                    // Заказ уже создан. Не повторяем оформление.
+                }
+
+                _message =
+                    $"Заказ №{order.Id} создан, но корзину не удалось полностью очистить.";
+            }
+            else
+            {
+                _items.Clear();
+
+                _message =
+                    $"Заказ №{order.Id} успешно оформлен!";
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
         }
         finally
         {
