@@ -104,6 +104,31 @@ try
 
     var cartApi = app.MapGroup("/api/cart").WithTags("Cart");
 
+    // Изменить количество товара в корзине
+    cartApi.MapPut("/items/{productId:guid}", async (
+        Guid productId,
+        Guid userId,
+        UpdateCartItemRequest request,
+        CatalogDbContext db) =>
+    {
+        if (request.Quantity <= 0)
+            return Results.BadRequest("Quantity must be greater than 0");
+
+        var item = await db.CartItems
+            .FirstOrDefaultAsync(c =>
+                c.UserId == userId &&
+                c.ProductId == productId);
+
+        if (item is null)
+            return Results.NotFound("Cart item not found");
+
+        item.Quantity = request.Quantity;
+
+        await db.SaveChangesAsync();
+
+        return Results.NoContent();
+    });
+
     cartApi.MapGet("/", async (Guid userId, CatalogDbContext db) =>
     {
         var items = await db.CartItems

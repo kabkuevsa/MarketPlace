@@ -26,6 +26,20 @@ public class CatalogApi
         return await response.Content.ReadFromJsonAsync<Product>();
     }
 
+    public async Task UpdateCartItemQuantityAsync(
+    Guid userId,
+    Guid productId,
+    int quantity)
+    {
+        var request = new { quantity };
+
+        var response = await _http.PutAsJsonAsync(
+            $"/api/cart/items/{productId}?userId={userId}",
+            request);
+
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task AddToCartAsync(Guid userId, Guid productId, int quantity)
     {
         var request = new { userId, productId, quantity };
