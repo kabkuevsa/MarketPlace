@@ -1,0 +1,93 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@using Marketplace.Web.Models
+@using Marketplace.Web.Services
+@inject CatalogApi CatalogApi
+@inject CustomAuthStateProvider AuthProvider
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+
+<PageTitle>Каталог товаров</PageTitle>
+
+<h1>Каталог товаров</h1>
+
+@if (_loading)
+{
+    <p>Загрузка...</p>
+}
+else if (_products.Count == 0)
+{
+    <p>Товары не найдены.</p>
+}
+else
+{
+    <div class="row">
+        @foreach (var product in _products)
+        {
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">@product.Name</h5>
+                        <p class="card-text text-muted">@product.CategoryName</p>
+                        <p class="card-text">@product.Description</p>
+                        <h4 class="text-primary">@product.Price.ToString("C")</h4>
+                    </div>
+                    <div class="card-footer">
+                        <AuthorizeView>
+                            <Authorized>
+                                <button class="btn btn-success" @onclick="() => AddToCart(product.Id)">
+                                    В корзину
+                                </button>
+                            </Authorized>
+                            <NotAuthorized>
+                                <button class="btn btn-outline-primary" @onclick="GoToLogin">
+                                    Войти для покупки
+                                </button>
+                            </NotAuthorized>
+                        </AuthorizeView>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert alert-success mt-3">@_message</div>
+}
+
+@code {
+    private List<Product> _products = new();
+    private bool _loading = true;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _products = await CatalogApi.GetProductsAsync();
+        _loading = false;
+    }
+
+    private async Task AddToCart(Guid productId)
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst("sub")?.Value
+                          ?? authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (userIdClaim is null || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            _message = "Не удалось определить пользователя";
+            return;
+        }
+
+        await CatalogApi.AddToCartAsync(userId, productId, 1);
+        _message = "Товар добавлен в корзину";
+        StateHasChanged();
+
+        await Task.Delay(2000);
+        _message = null;
+        StateHasChanged();
+    }
+
+    private void GoToLogin() => Navigation.NavigateTo("/login");
+}

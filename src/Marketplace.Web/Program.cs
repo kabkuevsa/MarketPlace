@@ -13,6 +13,10 @@ builder.Services.AddScoped(sp => new HttpClient
     BaseAddress = new Uri(builder.Configuration["GatewayUrl"] ?? "http://localhost:5000")
 });
 
+builder.Services.AddScoped<CatalogApi>();
+builder.Services.AddScoped<IdentityApi>();
+builder.Services.AddScoped<OrdersApi>();
+
 // Сервис для хранения JWT-токена
 builder.Services.AddScoped<TokenStorageService>();
 
