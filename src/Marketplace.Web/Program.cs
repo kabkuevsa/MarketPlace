@@ -2,6 +2,7 @@
 using Marketplace.Web.Components;
 using Marketplace.Web.Services;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,10 +20,10 @@ builder.Services.AddScoped<CatalogApi>();
 builder.Services.AddScoped<IdentityApi>();
 builder.Services.AddScoped<OrdersApi>();
 
-// Хранение JWT
+builder.Services.AddScoped<ProtectedSessionStorage>();
+
 builder.Services.AddScoped<TokenStorageService>();
 
-// Авторизация
 builder.Services.AddScoped<CustomAuthStateProvider>();
 
 builder.Services.AddScoped<AuthenticationStateProvider>(
@@ -30,7 +31,6 @@ builder.Services.AddScoped<AuthenticationStateProvider>(
 
 builder.Services.AddAuthorizationCore();
 
-// Передача AuthenticationState всем компонентам Blazor
 builder.Services.AddCascadingAuthenticationState();
 
 var app = builder.Build();
