@@ -1,5 +1,4 @@
-﻿
-@page "/orders"
+﻿@page "/orders"
 @rendermode InteractiveServer
 
 @using System.Security.Claims
@@ -27,6 +26,7 @@
     {
         <div class="alert alert-danger">
             @_error
+
             <button class="btn btn-sm btn-outline-danger ms-3"
                     @onclick="LoadOrdersAsync">
                 Повторить
@@ -53,8 +53,9 @@
 
                     <div>
                         <strong>Заказ №@order.Id</strong>
+
                         <div class="text-muted small">
-                            @order.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+                            @(order.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm"))
                         </div>
                     </div>
 
@@ -65,6 +66,13 @@
                 </div>
 
                 <div class="card-body">
+
+                    <div class="mb-3">
+                        <strong>Адрес доставки:</strong>
+                        <div>@order.DeliveryAddress</div>
+                    </div>
+
+                    <hr />
 
                     <h5 class="mb-3">Товары</h5>
 
@@ -167,7 +175,8 @@
         {
             "Completed" => "bg-success",
             "Cancelled" or "Failed" => "bg-danger",
-            "ProcessingPayment" or "ReservingStock" => "bg-warning text-dark",
+            "ProcessingPayment" or "ReservingStock" =>
+                "bg-warning text-dark",
             "StockReserved" => "bg-info text-dark",
             _ => "bg-secondary"
         };

@@ -1,8 +1,10 @@
-﻿namespace Marketplace.Web.Models;
+﻿
+namespace Marketplace.Web.Models;
 
 public record Order(
     Guid Id,
     Guid UserId,
+    string DeliveryAddress,
     string Status,
     decimal Total,
     DateTime CreatedAt,

@@ -1,5 +1,4 @@
-﻿
-@page "/cart"
+﻿@page "/cart"
 @rendermode InteractiveServer
 
 @using System.Security.Claims
@@ -28,6 +27,7 @@
     {
         <div class="alert alert-danger">
             @_error
+
             <button class="btn btn-sm btn-outline-danger ms-3"
                     @onclick="LoadCartAsync">
                 Повторить
@@ -83,10 +83,10 @@
                                 <button class="btn btn-outline-secondary"
                                         disabled="@(_busy || item.Quantity <= 1)"
                                         @onclick="() => ChangeQuantityAsync(
-                                            item.ProductId,
-                                            item.Quantity - 1)">
-                                    −
-                                </button>
+                                                                                item.ProductId,
+                                                                                item.Quantity - 1)">
+−
+</button>
 
                                 <span class="fw-bold">
                                     @item.Quantity
@@ -95,10 +95,10 @@
                                 <button class="btn btn-outline-secondary"
                                         disabled="@_busy"
                                         @onclick="() => ChangeQuantityAsync(
-                                            item.ProductId,
-                                            item.Quantity + 1)">
-                                    +
-                                </button>
+                                                                                item.ProductId,
+                                                                                item.Quantity + 1)">
++
+</button>
 
                             </div>
 
@@ -126,13 +126,28 @@
 
                         <div class="d-flex justify-content-between mb-3">
                             <span>Общая стоимость:</span>
+
                             <strong class="text-primary fs-5">
                                 @CartTotal.ToString("C")
                             </strong>
                         </div>
 
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Адрес доставки
+                            </label>
+
+                            <input class="form-control"
+                                   @bind="_deliveryAddress"
+                                   maxlength="500"
+                                   placeholder="Улица, дом, квартира, город" />
+                        </div>
+
                         <button class="btn btn-success w-100 mb-2"
-                                disabled="@(_busy || _createdOrderId.HasValue)"
+                                disabled="@(
+                                _busy ||
+                                _createdOrderId.HasValue ||
+                                string.IsNullOrWhiteSpace(_deliveryAddress))"
                                 @onclick="CheckoutAsync">
 
                             @if (_busy)
@@ -188,6 +203,8 @@
     private bool _loading = true;
     private bool _busy;
 
+    private string _deliveryAddress = string.Empty;
+
     private string? _error;
     private string? _message;
 
@@ -217,6 +234,7 @@
         await LoadCartAsync();
     }
 
+    // Load cart
     private async Task LoadCartAsync()
     {
         if (_userId is null)
@@ -239,6 +257,7 @@
         }
     }
 
+    // Change product quantity
     private async Task ChangeQuantityAsync(
         Guid productId,
         int quantity)
@@ -271,6 +290,7 @@
         }
     }
 
+    // Remove product from cart
     private async Task RemoveItemAsync(Guid productId)
     {
         if (_userId is null || _busy)
@@ -300,10 +320,16 @@
         }
     }
 
+    // Checkout
     private async Task CheckoutAsync()
     {
-        if (_userId is null || _items.Count == 0 || _busy)
+        if (_userId is null ||
+            _items.Count == 0 ||
+            _busy ||
+            string.IsNullOrWhiteSpace(_deliveryAddress))
+        {
             return;
+        }
 
         _busy = true;
         _error = null;
@@ -317,13 +343,15 @@
                     item.Quantity))
                 .ToList();
 
-            // Отправляем заказ в Orders API.
-            var order = await OrdersApi.CreateOrderAsync(orderItems);
+            // Create order with delivery address
+            var order = await OrdersApi.CreateOrderAsync(
+                orderItems,
+                _deliveryAddress);
 
-            // Запоминаем созданный заказ, чтобы не отправить его повторно.
+            // Remember created order to prevent duplicate checkout
             _createdOrderId = order.Id;
 
-            // Очищаем корзину после успешного создания заказа.
+            // Clear cart after successful order creation
             var cartCleanupFailed = false;
 
             foreach (var item in _items.ToList())
@@ -344,11 +372,13 @@
             {
                 try
                 {
-                    _items = await CatalogApi.GetCartAsync(_userId.Value);
+                    _items = await CatalogApi.GetCartAsync(
+                        _userId.Value);
                 }
                 catch (HttpRequestException)
                 {
-                    // Заказ уже создан. Не повторяем оформление.
+                    // The order was already created.
+                    // Do not submit it again.
                 }
 
                 _message =

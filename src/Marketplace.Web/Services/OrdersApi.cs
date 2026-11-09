@@ -13,15 +13,23 @@ public class OrdersApi
         _http = http;
     }
 
-    public async Task<Order> CreateOrderAsync(List<OrderItemRequest> items)
+    public async Task<Order> CreateOrderAsync(
+        List<OrderItemRequest> items,
+        string deliveryAddress)
     {
         if (items is null || items.Count == 0)
-            throw new ArgumentException("Order must contain at least one item.");
+            throw new ArgumentException(
+                "Order must contain at least one item.");
 
-        if (items.Any(i => i.ProductId == Guid.Empty || i.Quantity <= 0))
-            throw new ArgumentException("Order contains invalid items.");
+        if (string.IsNullOrWhiteSpace(deliveryAddress))
+            throw new ArgumentException(
+                "Delivery address is required.");
 
-        var request = new { items };
+        var request = new
+        {
+            items,
+            deliveryAddress = deliveryAddress.Trim()
+        };
 
         using var response = await _http.PostAsJsonAsync(
             "/api/orders",
@@ -29,37 +37,42 @@ public class OrdersApi
 
         if (!response.IsSuccessStatusCode)
         {
-            var error = await response.Content.ReadAsStringAsync();
+            var error =
+                await response.Content.ReadAsStringAsync();
 
             throw new HttpRequestException(
-                $"Не удалось создать заказ. HTTP {(int)response.StatusCode}. {error}",
+                $"Не удалось создать заказ: {error}",
                 null,
                 response.StatusCode);
         }
 
-        var order = await response.Content.ReadFromJsonAsync<Order>();
-
-        return order ?? throw new InvalidOperationException(
-            "Сервер создал заказ, но вернул пустой ответ.");
+        return await response.Content.ReadFromJsonAsync<Order>()
+            ?? throw new InvalidOperationException(
+                "Сервер вернул пустой ответ.");
     }
 
     public async Task<List<Order>> GetUserOrdersAsync()
     {
-        using var response = await _http.GetAsync("/api/orders");
+        using var response =
+            await _http.GetAsync("/api/orders");
 
         if (!response.IsSuccessStatusCode)
         {
-            var error = await response.Content.ReadAsStringAsync();
+            var error =
+                await response.Content.ReadAsStringAsync();
 
             throw new HttpRequestException(
-                $"Не удалось загрузить заказы. HTTP {(int)response.StatusCode}. {error}",
+                $"Не удалось загрузить заказы: {error}",
                 null,
                 response.StatusCode);
         }
 
-        return await response.Content.ReadFromJsonAsync<List<Order>>()
-               ?? new List<Order>();
+        return await response.Content
+            .ReadFromJsonAsync<List<Order>>()
+            ?? new List<Order>();
     }
 }
 
-public record OrderItemRequest(Guid ProductId, int Quantity);
+public record OrderItemRequest(
+    Guid ProductId,
+    int Quantity);

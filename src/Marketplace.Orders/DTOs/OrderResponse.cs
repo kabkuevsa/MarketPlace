@@ -1,8 +1,10 @@
-﻿namespace Marketplace.Orders.DTOs;
+﻿
+namespace Marketplace.Orders.DTOs;
 
 public record OrderResponse(
     Guid Id,
     Guid UserId,
+    string DeliveryAddress,
     string Status,
     decimal Total,
     DateTime CreatedAt,
