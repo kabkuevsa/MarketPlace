@@ -1,0 +1,40 @@
+# Build stage
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+
+WORKDIR /src
+
+ARG PROJECT_FILE
+
+COPY . .
+
+RUN dotnet restore "${PROJECT_FILE}"
+
+RUN dotnet publish "${PROJECT_FILE}" \
+    --configuration Release \
+    --no-restore \
+    --output /app/publish \
+    /p:UseAppHost=false
+
+
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+USER root
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+ARG APP_DLL
+
+ENV APP_DLL=${APP_DLL}
+ENV ASPNETCORE_URLS=http://+:8080
+
+EXPOSE 8080
+
+COPY --from=build /app/publish .
+
+USER app
+
+ENTRYPOINT ["sh", "-c", "dotnet \"$APP_DLL\""]
