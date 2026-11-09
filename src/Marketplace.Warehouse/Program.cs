@@ -35,7 +35,10 @@ try
                 h.Username(rabbit["Username"] ?? "guest");
                 h.Password(rabbit["Password"] ?? "guest");
             });
-            cfg.ConfigureEndpoints(context);
+            cfg.ReceiveEndpoint("warehouse-order-completed", endpoint =>
+            {
+                endpoint.ConfigureConsumer<OrderCompletedConsumer>(context);
+            });
         });
     });
 

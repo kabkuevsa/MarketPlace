@@ -6,6 +6,7 @@
 @using Marketplace.Web.Services
 
 @inject OrdersApi OrdersApi
+@inject DeliveriesApi DeliveriesApi
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 
@@ -13,7 +14,15 @@
 
 <div class="container mt-4">
 
-    <h1 class="mb-4">Мои заказы</h1>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0">Мои заказы</h1>
+
+        <button class="btn btn-outline-primary"
+                disabled="@_loading"
+                @onclick="LoadOrdersAsync">
+            Обновить
+        </button>
+    </div>
 
     @if (_loading)
     {
@@ -55,7 +64,8 @@
                         <strong>Заказ №@order.Id</strong>
 
                         <div class="text-muted small">
-                            @(order.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm"))
+                            @(order.CreatedAt.ToLocalTime()
+                                .ToString("dd.MM.yyyy HH:mm"))
                         </div>
                     </div>
 
@@ -70,6 +80,54 @@
                     <div class="mb-3">
                         <strong>Адрес доставки:</strong>
                         <div>@order.DeliveryAddress</div>
+                    </div>
+
+                    <div class="border rounded p-3 mb-3">
+
+                        <h6 class="mb-2">
+                            Статус доставки
+                        </h6>
+
+                        @if (order.Status != "Completed")
+                        {
+                            <span class="text-muted">
+                                Доставка появится после успешного завершения заказа.
+                            </span>
+                        }
+                        else if (_deliveryErrors.Contains(order.Id))
+                        {
+                            <span class="text-danger">
+                                Не удалось загрузить статус доставки.
+                                Попробуйте обновить страницу.
+                            </span>
+                        }
+                        else if (_deliveries.TryGetValue(
+                            order.Id, out var delivery))
+                        {
+                            @if (delivery is null)
+                            {
+                                <span class="badge bg-warning text-dark">
+                                    Доставка создаётся
+                                </span>
+
+                                <div class="text-muted small mt-2">
+                                    Информация появится после обработки события.
+                                </div>
+                            }
+                            else
+                            {
+                                <span class="badge @GetDeliveryStatusClass(delivery.Status)">
+                                    @GetDeliveryStatusText(delivery.Status)
+                                </span>
+
+                                <div class="text-muted small mt-2">
+                                    Обновлено:
+                                    @(delivery.UpdatedAt.ToLocalTime()
+                                        .ToString("dd.MM.yyyy HH:mm"))
+                                </div>
+                            }
+                        }
+
                     </div>
 
                     <hr />
@@ -90,7 +148,8 @@
                             </div>
 
                             <div class="fw-bold">
-                                @((item.PriceSnapshot * item.Quantity).ToString("C"))
+                                @((item.PriceSnapshot * item.Quantity)
+                                    .ToString("C"))
                             </div>
 
                         </div>
@@ -118,6 +177,10 @@
 
     private List<Order> _orders = new();
 
+    private readonly Dictionary<Guid, Delivery?> _deliveries = new();
+
+    private readonly HashSet<Guid> _deliveryErrors = new();
+
     private bool _loading = true;
     private string? _error;
 
@@ -140,9 +203,30 @@
         _loading = true;
         _error = null;
 
+        _deliveries.Clear();
+        _deliveryErrors.Clear();
+
         try
         {
+            // Загружаем заказы текущего пользователя.
             _orders = await OrdersApi.GetUserOrdersAsync();
+
+            // Информацию о доставке запрашиваем только
+            // для успешно завершённых заказов.
+            foreach (var order in _orders.Where(
+                x => x.Status == "Completed"))
+            {
+                try
+                {
+                    _deliveries[order.Id] =
+                        await DeliveriesApi.GetByOrderIdAsync(order.Id);
+                }
+                catch (HttpRequestException)
+                {
+                    // Ошибка доставки не должна скрывать историю заказов.
+                    _deliveryErrors.Add(order.Id);
+                }
+            }
         }
         catch (HttpRequestException)
         {
@@ -178,6 +262,32 @@
             "ProcessingPayment" or "ReservingStock" =>
                 "bg-warning text-dark",
             "StockReserved" => "bg-info text-dark",
+            _ => "bg-secondary"
+        };
+    }
+
+    private static string GetDeliveryStatusText(string status)
+    {
+        return status switch
+        {
+            "Created" => "Ожидает обработки",
+            "Preparing" => "Готовится к отправке",
+            "Shipped" => "Передана в доставку",
+            "Delivered" => "Доставлена",
+            "Cancelled" => "Отменена",
+            _ => status
+        };
+    }
+
+    private static string GetDeliveryStatusClass(string status)
+    {
+        return status switch
+        {
+            "Created" => "bg-secondary",
+            "Preparing" => "bg-warning text-dark",
+            "Shipped" => "bg-info text-dark",
+            "Delivered" => "bg-success",
+            "Cancelled" => "bg-danger",
             _ => "bg-secondary"
         };
     }

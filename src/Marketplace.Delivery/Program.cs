@@ -48,7 +48,10 @@ builder.Services.AddMassTransit(x =>
                 host.Password(rabbitPassword);
             });
 
-        configuration.ConfigureEndpoints(context);
+        configuration.ReceiveEndpoint("delivery-order-completed", endpoint =>
+        {
+            endpoint.ConfigureConsumer<OrderCompletedConsumer>(context);
+        });
     });
 });
 
