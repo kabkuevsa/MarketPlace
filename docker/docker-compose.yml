@@ -1,4 +1,9 @@
 services:
+
+  # =========================
+  # PostgreSQL databases
+  # =========================
+
   postgres-identity:
     image: postgres:16
     container_name: marketplace-identity-db
@@ -10,6 +15,12 @@ services:
       - "5442:5432"
     volumes:
       - postgres-identity-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d identity_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 
   postgres-catalog:
     image: postgres:16
@@ -22,6 +33,12 @@ services:
       - "5443:5432"
     volumes:
       - postgres-catalog-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d catalog_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 
   postgres-orders:
     image: postgres:16
@@ -34,6 +51,12 @@ services:
       - "5444:5432"
     volumes:
       - postgres-orders-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d orders_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 
   postgres-warehouse:
     image: postgres:16
@@ -46,6 +69,12 @@ services:
       - "5445:5432"
     volumes:
       - postgres-warehouse-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d warehouse_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 
   postgres-payments:
     image: postgres:16
@@ -58,8 +87,12 @@ services:
       - "5446:5432"
     volumes:
       - postgres-payments-data:/var/lib/postgresql/data
-
-      
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d payments_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 
   postgres-delivery:
     image: postgres:16
@@ -72,17 +105,282 @@ services:
       - "5447:5432"
     volumes:
       - postgres-delivery-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d delivery_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 
+
+  # =========================
+  # RabbitMQ
+  # =========================
 
   rabbitmq:
     image: rabbitmq:3-management
     container_name: marketplace-rabbitmq
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: marketplace
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-marketplace_dev_password}
+      RABBITMQ_DEFAULT_VHOST: /
     ports:
       - "5672:5672"
       - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+
+  # =========================
+  # Identity
+  # =========================
+
+  identity:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.service
+      args:
+        PROJECT_FILE: src/Marketplace.Identity/Marketplace.Identity.csproj
+        APP_DLL: Marketplace.Identity.dll
+    container_name: marketplace-identity
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: "Host=postgres-identity;Port=5432;Database=identity_db;Username=postgres;Password=postgres"
+      JwtSettings__SecretKey: ${MARKETPLACE_JWT_SECRET:-marketplace-local-development-jwt-secret-key-change-before-production}
+      JwtSettings__Issuer: Marketplace.Identity
+      JwtSettings__Audience: Marketplace.Clients
+    ports:
+      - "5131:8080"
+    depends_on:
+      postgres-identity:
+        condition: service_healthy
+    restart: unless-stopped
+
+
+  # =========================
+  # Catalog
+  # =========================
+
+  catalog:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.service
+      args:
+        PROJECT_FILE: src/Marketplace.Catalog/Marketplace.Catalog.csproj
+        APP_DLL: Marketplace.Catalog.dll
+    container_name: marketplace-catalog
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: "Host=postgres-catalog;Port=5432;Database=catalog_db;Username=postgres;Password=postgres"
+    ports:
+      - "5201:8080"
+    depends_on:
+      postgres-catalog:
+        condition: service_healthy
+    restart: unless-stopped
+
+
+  # =========================
+  # Warehouse
+  # =========================
+
+  warehouse:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.service
+      args:
+        PROJECT_FILE: src/Marketplace.Warehouse/Marketplace.Warehouse.csproj
+        APP_DLL: Marketplace.Warehouse.dll
+    container_name: marketplace-warehouse
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: "Host=postgres-warehouse;Port=5432;Database=warehouse_db;Username=postgres;Password=postgres"
+      RabbitMq__Host: rabbitmq
+      RabbitMq__VirtualHost: /
+      RabbitMq__Username: marketplace
+      RabbitMq__Password: ${RABBITMQ_PASSWORD:-marketplace_dev_password}
+    ports:
+      - "5130:8080"
+    depends_on:
+      postgres-warehouse:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+
+  # =========================
+  # Payments
+  # =========================
+
+  payments:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.service
+      args:
+        PROJECT_FILE: src/Marketplace.Payments/Marketplace.Payments.csproj
+        APP_DLL: Marketplace.Payments.dll
+    container_name: marketplace-payments
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: "Host=postgres-payments;Port=5432;Database=payments_db;Username=postgres;Password=postgres"
+    ports:
+      - "5143:8080"
+    depends_on:
+      postgres-payments:
+        condition: service_healthy
+    restart: unless-stopped
+
+
+  # =========================
+  # Orders
+  # =========================
+
+  orders:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.service
+      args:
+        PROJECT_FILE: src/Marketplace.Orders/Marketplace.Orders.csproj
+        APP_DLL: Marketplace.Orders.dll
+    container_name: marketplace-orders
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: "Host=postgres-orders;Port=5432;Database=orders_db;Username=postgres;Password=postgres"
+      JwtSettings__SecretKey: ${MARKETPLACE_JWT_SECRET:-marketplace-local-development-jwt-secret-key-change-before-production}
+      JwtSettings__Issuer: Marketplace.Identity
+      JwtSettings__Audience: Marketplace.Clients
+      RabbitMq__Host: rabbitmq
+      RabbitMq__VirtualHost: /
+      RabbitMq__Username: marketplace
+      RabbitMq__Password: ${RABBITMQ_PASSWORD:-marketplace_dev_password}
+      ServiceUrls__Catalog: http://catalog:8080
+      ServiceUrls__Warehouse: http://warehouse:8080
+      ServiceUrls__Payments: http://payments:8080
+    ports:
+      - "5242:8080"
+    depends_on:
+      postgres-orders:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      catalog:
+        condition: service_started
+      warehouse:
+        condition: service_started
+      payments:
+        condition: service_started
+    restart: unless-stopped
+
+
+  # =========================
+  # Delivery
+  # =========================
+
+  delivery:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.service
+      args:
+        PROJECT_FILE: src/Marketplace.Delivery/Marketplace.Delivery.csproj
+        APP_DLL: Marketplace.Delivery.dll
+    container_name: marketplace-delivery
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Delivery: "Host=postgres-delivery;Port=5432;Database=delivery_db;Username=postgres;Password=postgres"
+      RabbitMq__Host: rabbitmq
+      RabbitMq__VirtualHost: /
+      RabbitMq__Username: marketplace
+      RabbitMq__Password: ${RABBITMQ_PASSWORD:-marketplace_dev_password}
+    ports:
+      - "5208:8080"
+    depends_on:
+      postgres-delivery:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+
+  # =========================
+  # API Gateway
+  # =========================
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.service
+      args:
+        PROJECT_FILE: src/Marketplace.Gateway/Marketplace.Gateway.csproj
+        APP_DLL: Marketplace.Gateway.dll
+    container_name: marketplace-gateway
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      JwtSettings__SecretKey: ${MARKETPLACE_JWT_SECRET:-marketplace-local-development-jwt-secret-key-change-before-production}
+      JwtSettings__Issuer: Marketplace.Identity
+      JwtSettings__Audience: Marketplace.Clients
+
+      ReverseProxy__Clusters__identity__Destinations__destination1__Address: http://identity:8080/
+      ReverseProxy__Clusters__catalog__Destinations__destination1__Address: http://catalog:8080/
+      ReverseProxy__Clusters__orders__Destinations__destination1__Address: http://orders:8080/
+      ReverseProxy__Clusters__warehouse__Destinations__destination1__Address: http://warehouse:8080/
+      ReverseProxy__Clusters__delivery__Destinations__destination1__Address: http://delivery:8080/
+    ports:
+      - "5002:8080"
+    depends_on:
+      identity:
+        condition: service_started
+      catalog:
+        condition: service_started
+      orders:
+        condition: service_started
+      warehouse:
+        condition: service_started
+      delivery:
+        condition: service_started
+    restart: unless-stopped
+
+
+  # =========================
+  # Web
+  # =========================
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.service
+      args:
+        PROJECT_FILE: src/Marketplace.Web/Marketplace.Web.csproj
+        APP_DLL: Marketplace.Web.dll
+    container_name: marketplace-web
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      GatewayUrl: http://gateway:8080
+    ports:
+      - "5196:8080"
+    depends_on:
+      gateway:
+        condition: service_started
+    restart: unless-stopped
+
+
+# =========================
+# Volumes
+# =========================
 
 volumes:
   postgres-identity-data:
@@ -91,3 +389,4 @@ volumes:
   postgres-warehouse-data:
   postgres-payments-data:
   postgres-delivery-data:
+  rabbitmq-data:
