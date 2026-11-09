@@ -59,6 +59,21 @@ services:
     volumes:
       - postgres-payments-data:/var/lib/postgresql/data
 
+      
+
+  postgres-delivery:
+    image: postgres:16
+    container_name: marketplace-delivery-db
+    environment:
+      POSTGRES_DB: delivery_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5447:5432"
+    volumes:
+      - postgres-delivery-data:/var/lib/postgresql/data
+
+
   rabbitmq:
     image: rabbitmq:3-management
     container_name: marketplace-rabbitmq
@@ -75,3 +90,4 @@ volumes:
   postgres-orders-data:
   postgres-warehouse-data:
   postgres-payments-data:
+  postgres-delivery-data:
