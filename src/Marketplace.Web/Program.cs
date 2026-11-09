@@ -19,6 +19,7 @@ builder.Services.AddScoped(sp => new HttpClient
 builder.Services.AddScoped<CatalogApi>();
 builder.Services.AddScoped<IdentityApi>();
 builder.Services.AddScoped<OrdersApi>();
+builder.Services.AddScoped<DeliveriesApi>();
 
 builder.Services.AddScoped<ProtectedSessionStorage>();
 
