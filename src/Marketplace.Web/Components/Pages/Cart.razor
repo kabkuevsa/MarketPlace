@@ -1,0 +1,408 @@
+﻿@page "/cart"
+@rendermode InteractiveServer
+
+@using System.Security.Claims
+@using Marketplace.Web.Models
+@using Marketplace.Web.Services
+
+@inject CatalogApi CatalogApi
+@inject OrdersApi OrdersApi
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Моя корзина</PageTitle>
+
+<div class="container mt-4">
+
+    <h1 class="mb-4">Моя корзина</h1>
+
+    @if (_loading)
+    {
+        <div class="text-center mt-5">
+            <div class="spinner-border text-primary"></div>
+            <p>Загрузка корзины...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger">
+            @_error
+
+            <button class="btn btn-sm btn-outline-danger ms-3"
+                    @onclick="LoadCartAsync">
+                Повторить
+            </button>
+        </div>
+    }
+    else if (_items.Count == 0)
+    {
+        <div class="alert alert-info">
+            Ваша корзина пока пуста.
+        </div>
+
+        <a href="/" class="btn btn-primary">
+            Перейти в каталог
+        </a>
+    }
+    else
+    {
+        <div class="row">
+
+            <div class="col-lg-8">
+
+                @foreach (var item in _items)
+                {
+                    <div class="card mb-3" @key="item.ProductId">
+
+                        <div class="card-body">
+
+                            <div class="d-flex justify-content-between">
+
+                                <div>
+                                    <h5>@item.ProductName</h5>
+
+                                    <p class="text-muted mb-2">
+                                        Цена: @item.ProductPrice.ToString("C")
+                                    </p>
+
+                                    <p class="fw-bold">
+                                        Итого: @item.TotalPrice.ToString("C")
+                                    </p>
+                                </div>
+
+                                <button class="btn btn-outline-danger btn-sm"
+                                        disabled="@_busy"
+                                        @onclick="() => RemoveItemAsync(item.ProductId)">
+                                    Удалить
+                                </button>
+
+                            </div>
+
+                            <div class="d-flex align-items-center gap-3">
+
+                                <button class="btn btn-outline-secondary"
+                                        disabled="@(_busy || item.Quantity <= 1)"
+                                        @onclick="() => ChangeQuantityAsync(
+                                                                                item.ProductId,
+                                                                                item.Quantity - 1)">
+−
+</button>
+
+                                <span class="fw-bold">
+                                    @item.Quantity
+                                </span>
+
+                                <button class="btn btn-outline-secondary"
+                                        disabled="@_busy"
+                                        @onclick="() => ChangeQuantityAsync(
+                                                                                item.ProductId,
+                                                                                item.Quantity + 1)">
++
+</button>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+                }
+
+            </div>
+
+            <div class="col-lg-4">
+
+                <div class="card shadow-sm">
+
+                    <div class="card-body">
+
+                        <h4>Ваш заказ</h4>
+
+                        <hr />
+
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>Количество товаров:</span>
+                            <strong>@_items.Sum(i => i.Quantity)</strong>
+                        </div>
+
+                        <div class="d-flex justify-content-between mb-3">
+                            <span>Общая стоимость:</span>
+
+                            <strong class="text-primary fs-5">
+                                @CartTotal.ToString("C")
+                            </strong>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">
+                                Адрес доставки
+                            </label>
+
+                            <input class="form-control"
+                                   @bind="_deliveryAddress"
+                                   maxlength="500"
+                                   placeholder="Улица, дом, квартира, город" />
+                        </div>
+
+                        <button class="btn btn-success w-100 mb-2"
+                                disabled="@(
+                                _busy ||
+                                _createdOrderId.HasValue ||
+                                string.IsNullOrWhiteSpace(_deliveryAddress))"
+                                @onclick="CheckoutAsync">
+
+                            @if (_busy)
+                            {
+                                <span>Оформление заказа...</span>
+                            }
+                            else if (_createdOrderId.HasValue)
+                            {
+                                <span>Заказ создан</span>
+                            }
+                            else
+                            {
+                                <span>Оформить заказ</span>
+                            }
+
+                        </button>
+
+                        <a href="/" class="btn btn-outline-primary w-100">
+                            Продолжить покупки
+                        </a>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_message))
+    {
+        <div class="alert alert-success mt-3">
+            @_message
+
+            <div class="mt-2">
+                <a href="/orders" class="btn btn-primary">
+                    Перейти к моим заказам
+                </a>
+            </div>
+        </div>
+    }
+
+</div>
+
+@code {
+
+    private List<CartItem> _items = new();
+
+    private Guid? _userId;
+    private Guid? _createdOrderId;
+
+    private bool _loading = true;
+    private bool _busy;
+
+    private string _deliveryAddress = string.Empty;
+
+    private string? _error;
+    private string? _message;
+
+    private decimal CartTotal =>
+        _items.Sum(item => item.TotalPrice);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState =
+            await AuthStateProvider.GetAuthenticationStateAsync();
+
+        var user = authState.User;
+
+        var userIdValue =
+            user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? user.FindFirst("nameid")?.Value
+            ?? user.FindFirst("sub")?.Value;
+
+        if (!Guid.TryParse(userIdValue, out var userId))
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        _userId = userId;
+
+        await LoadCartAsync();
+    }
+
+    // Load cart
+    private async Task LoadCartAsync()
+    {
+        if (_userId is null)
+            return;
+
+        _loading = true;
+        _error = null;
+
+        try
+        {
+            _items = await CatalogApi.GetCartAsync(_userId.Value);
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Не удалось загрузить корзину.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    // Change product quantity
+    private async Task ChangeQuantityAsync(
+        Guid productId,
+        int quantity)
+    {
+        if (_userId is null || quantity < 1 || _busy)
+            return;
+
+        _busy = true;
+        _error = null;
+        _message = null;
+
+        try
+        {
+            await CatalogApi.UpdateCartItemQuantityAsync(
+                _userId.Value,
+                productId,
+                quantity);
+
+            _items = await CatalogApi.GetCartAsync(_userId.Value);
+
+            _message = "Количество товара обновлено.";
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Не удалось изменить количество товара.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // Remove product from cart
+    private async Task RemoveItemAsync(Guid productId)
+    {
+        if (_userId is null || _busy)
+            return;
+
+        _busy = true;
+        _error = null;
+        _message = null;
+
+        try
+        {
+            await CatalogApi.RemoveFromCartAsync(
+                _userId.Value,
+                productId);
+
+            _items = await CatalogApi.GetCartAsync(_userId.Value);
+
+            _message = "Товар удалён из корзины.";
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Не удалось удалить товар.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // Checkout
+    private async Task CheckoutAsync()
+    {
+        if (_userId is null ||
+            _items.Count == 0 ||
+            _busy ||
+            string.IsNullOrWhiteSpace(_deliveryAddress))
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        _message = null;
+
+        try
+        {
+            var orderItems = _items
+                .Select(item => new OrderItemRequest(
+                    item.ProductId,
+                    item.Quantity))
+                .ToList();
+
+            // Create order with delivery address
+            var order = await OrdersApi.CreateOrderAsync(
+                orderItems,
+                _deliveryAddress);
+
+            // Remember created order to prevent duplicate checkout
+            _createdOrderId = order.Id;
+
+            // Clear cart after successful order creation
+            var cartCleanupFailed = false;
+
+            foreach (var item in _items.ToList())
+            {
+                try
+                {
+                    await CatalogApi.RemoveFromCartAsync(
+                        _userId.Value,
+                        item.ProductId);
+                }
+                catch (HttpRequestException)
+                {
+                    cartCleanupFailed = true;
+                }
+            }
+
+            if (cartCleanupFailed)
+            {
+                try
+                {
+                    _items = await CatalogApi.GetCartAsync(
+                        _userId.Value);
+                }
+                catch (HttpRequestException)
+                {
+                    // The order was already created.
+                    // Do not submit it again.
+                }
+
+                _message =
+                    $"Заказ №{order.Id} создан, но корзину не удалось полностью очистить.";
+            }
+            else
+            {
+                _items.Clear();
+
+                _message =
+                    $"Заказ №{order.Id} успешно оформлен!";
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

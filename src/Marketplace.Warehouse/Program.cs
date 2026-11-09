@@ -29,10 +29,11 @@ try
         x.AddConsumer<OrderCompletedConsumer>();
         x.UsingRabbitMq((context, cfg) =>
         {
-            cfg.Host("localhost", "/", h =>
+            var rabbit = builder.Configuration.GetSection("RabbitMq");
+            cfg.Host(rabbit["Host"] ?? "localhost", rabbit["VirtualHost"] ?? "/", h =>
             {
-                h.Username("guest");
-                h.Password("guest");
+                h.Username(rabbit["Username"] ?? "guest");
+                h.Password(rabbit["Password"] ?? "guest");
             });
             cfg.ConfigureEndpoints(context);
         });
@@ -78,6 +79,9 @@ try
     // Приёмка товара (увеличивает Available)
     stocksApi.MapPost("/", async (CreateStockRequest request, WarehouseDbContext db) =>
     {
+        if (request.ProductId == Guid.Empty || request.Quantity <= 0)
+            return Results.BadRequest("ProductId and positive Quantity are required");
+
         var stock = await db.StockItems.FirstOrDefaultAsync(s => s.ProductId == request.ProductId);
 
         if (stock is null)

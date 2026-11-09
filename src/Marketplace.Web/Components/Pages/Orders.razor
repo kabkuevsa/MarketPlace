@@ -1,0 +1,184 @@
+﻿@page "/orders"
+@rendermode InteractiveServer
+
+@using System.Security.Claims
+@using Marketplace.Web.Models
+@using Marketplace.Web.Services
+
+@inject OrdersApi OrdersApi
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Мои заказы</PageTitle>
+
+<div class="container mt-4">
+
+    <h1 class="mb-4">Мои заказы</h1>
+
+    @if (_loading)
+    {
+        <div class="text-center mt-5">
+            <div class="spinner-border text-primary"></div>
+            <p>Загрузка заказов...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger">
+            @_error
+
+            <button class="btn btn-sm btn-outline-danger ms-3"
+                    @onclick="LoadOrdersAsync">
+                Повторить
+            </button>
+        </div>
+    }
+    else if (_orders.Count == 0)
+    {
+        <div class="alert alert-info">
+            У вас пока нет заказов.
+        </div>
+
+        <a href="/" class="btn btn-primary">
+            Перейти в каталог
+        </a>
+    }
+    else
+    {
+        @foreach (var order in _orders)
+        {
+            <div class="card shadow-sm mb-4" @key="order.Id">
+
+                <div class="card-header d-flex justify-content-between align-items-center">
+
+                    <div>
+                        <strong>Заказ №@order.Id</strong>
+
+                        <div class="text-muted small">
+                            @(order.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm"))
+                        </div>
+                    </div>
+
+                    <span class="badge @GetStatusClass(order.Status)">
+                        @GetStatusText(order.Status)
+                    </span>
+
+                </div>
+
+                <div class="card-body">
+
+                    <div class="mb-3">
+                        <strong>Адрес доставки:</strong>
+                        <div>@order.DeliveryAddress</div>
+                    </div>
+
+                    <hr />
+
+                    <h5 class="mb-3">Товары</h5>
+
+                    @foreach (var item in order.Items)
+                    {
+                        <div class="d-flex justify-content-between border-bottom py-2">
+
+                            <div>
+                                <strong>@item.NameSnapshot</strong>
+
+                                <div class="text-muted small">
+                                    @item.PriceSnapshot.ToString("C")
+                                    × @item.Quantity
+                                </div>
+                            </div>
+
+                            <div class="fw-bold">
+                                @((item.PriceSnapshot * item.Quantity).ToString("C"))
+                            </div>
+
+                        </div>
+                    }
+
+                    <div class="d-flex justify-content-between mt-3">
+
+                        <span class="fs-5">Итого:</span>
+
+                        <strong class="text-primary fs-5">
+                            @order.Total.ToString("C")
+                        </strong>
+
+                    </div>
+
+                </div>
+
+            </div>
+        }
+    }
+
+</div>
+
+@code {
+
+    private List<Order> _orders = new();
+
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState =
+            await AuthStateProvider.GetAuthenticationStateAsync();
+
+        if (!authState.User.Identity?.IsAuthenticated ?? true)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        await LoadOrdersAsync();
+    }
+
+    private async Task LoadOrdersAsync()
+    {
+        _loading = true;
+        _error = null;
+
+        try
+        {
+            _orders = await OrdersApi.GetUserOrdersAsync();
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Не удалось загрузить историю заказов.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string GetStatusText(string status)
+    {
+        return status switch
+        {
+            "Created" => "Создан",
+            "ReservingStock" => "Резервирование товара",
+            "StockReserved" => "Товар зарезервирован",
+            "ProcessingPayment" => "Обработка оплаты",
+            "Completed" => "Завершён",
+            "Cancelled" => "Отменён",
+            "Failed" => "Ошибка",
+            _ => status
+        };
+    }
+
+    private static string GetStatusClass(string status)
+    {
+        return status switch
+        {
+            "Completed" => "bg-success",
+            "Cancelled" or "Failed" => "bg-danger",
+            "ProcessingPayment" or "ReservingStock" =>
+                "bg-warning text-dark",
+            "StockReserved" => "bg-info text-dark",
+            _ => "bg-secondary"
+        };
+    }
+}

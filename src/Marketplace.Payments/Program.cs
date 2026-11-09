@@ -44,6 +44,19 @@ try
 
     paymentsApi.MapPost("/", async (CreatePaymentRequest request, PaymentsDbContext db) =>
     {
+        if (request.OrderId == Guid.Empty || request.Amount <= 0)
+            return Results.BadRequest("OrderId and positive Amount are required");
+
+        // Идемпотентность: повторный запрос по оплаченному заказу не создаёт второй платёж
+        var existing = await db.Payments.FirstOrDefaultAsync(p =>
+            p.OrderId == request.OrderId && p.Status == PaymentStatus.Completed);
+        if (existing is not null)
+        {
+            return Results.Ok(new PaymentResponse(
+                existing.Id, existing.OrderId, existing.Amount,
+                existing.Status.ToString(), existing.CreatedAt));
+        }
+
         // Эмуляция: 90% платежей проходят успешно
         var isSuccess = Random.Shared.NextDouble() > 0.1;
 

@@ -77,7 +77,7 @@ try
     app.UseSerilogRequestLogging();
     app.UseAuthentication();
     app.UseAuthorization();
-    app.UseHttpsRedirection();
+    // app.UseHttpsRedirection();
     app.MapHealthChecks("/health");
 
     // Регистрация
@@ -114,7 +114,15 @@ try
 
         var token = jwtService.GenerateToken(user);
 
-        return Results.Ok(new AuthResponse(token, DateTime.UtcNow.AddMinutes(60)));
+        var expiresAt = DateTime.UtcNow.AddMinutes(
+            builder.Configuration.GetValue<int>(
+                "JwtSettings:ExpirationInMinutes", 60));
+
+        return Results.Ok(new AuthResponse(
+            token,
+            user.Email!,
+            user.Id,
+            expiresAt));
     })
     .AllowAnonymous()
     .WithName("Login")
