@@ -4,7 +4,6 @@
     <Project Path="src/Marketplace.Delivery/Marketplace.Delivery.csproj" />
     <Project Path="src/Marketplace.Gateway/Marketplace.Gateway.csproj" />
     <Project Path="src/Marketplace.Identity/Marketplace.Identity.csproj" />
-    <Project Path="src/Marketplace.Infrastructure/Marketplace.Infrastructure.csproj" />
     <Project Path="src/Marketplace.Orders/Marketplace.Orders.csproj" />
     <Project Path="src/Marketplace.Payments/Marketplace.Payments.csproj" />
     <Project Path="src/Marketplace.Shared/Marketplace.Shared.csproj" />
